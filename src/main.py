@@ -52,7 +52,9 @@ def main(args):
     df = load_data(initial_date=args.initial_date, 
                    final_date=args.final_date, 
                    tickers_subset=args.assets_to_trade,
-                   mode=args.mode)
+                   mode=args.mode,
+                   path=args.assets_to_trade
+                   )
     
     if args.mode == 'test' and args.initial_date is not None and args.final_date is not None:
         df = df.loc[args.initial_date:args.final_date]

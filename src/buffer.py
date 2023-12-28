@@ -39,7 +39,7 @@ class ReplayBuffer():
         self.new_state_buffer = np.zeros((self.size, *input_shape))
         self.action_buffer = np.zeros((self.size, action_space_dimension))
         self.reward_buffer = np.zeros(self.size)
-        self.done_buffer = np.zeros(self.size, dtype=np.bool)
+        self.done_buffer = np.zeros(self.size, dtype=bool)
         
     def push(self, 
              state: np.ndarray, 

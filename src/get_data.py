@@ -99,7 +99,9 @@ class Preprocessor():
 def load_data(initial_date: str, 
               final_date: str, 
               tickers_subset: str,
-              mode: str = 'test') -> pd.DataFrame:
+              mode: str = 'test',
+              path: str = 'portfolios_and_tickers/tickers_S&P500.txt'
+              ) -> pd.DataFrame:
     """Wrapper function designed to download, preprocess and load the data into a dataframe.
     
     Args:
@@ -112,7 +114,7 @@ def load_data(initial_date: str,
         df (pd.DataFrame): multidimensional time series containing the close price of the relevant assets
     """
     
-    with open('portfolios_and_tickers/tickers_S&P500.txt') as f:
+    with open(path) as f:
         stocks_symbols = f.read().splitlines()
       
     if not os.path.exists('data/'):  
