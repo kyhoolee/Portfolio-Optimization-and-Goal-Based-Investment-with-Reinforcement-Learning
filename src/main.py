@@ -17,20 +17,22 @@ import os
 import time
 import torch
 
-from src.agents import instanciate_agent
+from src.agents import init_agent
 from src.environment import Environment
 from src.get_data import load_data
 from src.run import Run
-from src.utilities import create_directory_tree, instanciate_scaler, prepare_initial_portfolio
+from src.utilities import create_directory_tree, init_scaler, init_portfolio
 
 def main(args):
 
-    # specifying the hardware
+    # 0. Preparing the initialization of the training or testing process
+    # ########################################################################################
+    # 0.1 Specifying the hardware
     gpu_devices = ','.join([str(id) for id in args.gpu_devices])
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_devices
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # initializing the random seeds for reproducibility
+    # 0.2 Init the random seeds for reproducibility
     seed = args.seed
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
@@ -38,17 +40,21 @@ def main(args):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
 
-    # creating all the necessary directory tree structure for efficient logging
+    # 0.3 Init all the necessary directory tree structure for efficient logging
     checkpoint_directory = create_directory_tree(mode=args.mode,
                                                  experimental=args.experimental,
                                                  checkpoint_directory=args.checkpoint_directory)
     
-    # saving the (hyper)parameters used for future reference
+    # 0.4 Save the (hyper)parameters used for future reference
     params_dict = vars(args)
     with open(os.path.join(checkpoint_directory, args.mode+"_parameters.json"), "w") as f: 
         json.dump(params_dict, f, indent=4)
     
-    # downloading, preprocessing and loading the multidimensional time series into a dataframe
+
+    # 1. Prepare data
+    # ########################################################################################
+    # 1.1 Download, process and load the data (stocks from yfinance)
+    # df is dataframe (index=dates, columns=stocks, values=closes)
     df = load_data(initial_date=args.initial_date, 
                    final_date=args.final_date, 
                    tickers_subset=args.assets_to_trade,
@@ -60,11 +66,37 @@ def main(args):
         df = df.loc[args.initial_date:args.final_date]
         dates = df.index
     
-    # preparing the initial portfolio to pass it to the constructor of the environment 
-    initial_portfolio = prepare_initial_portfolio(initial_portfolio=args.initial_cash if args.initial_cash is not None else args.initial_portfolio,
-                                                  tickers=df.columns.to_list())
+
+    # 2. Init the trading environment, the data standard scaler and the trading agent
+    # ########################################################################################
+    
+    # 2.1 Preparing the initial portfolio to pass it to the constructor of the environment 
+    if args.initial_cash: 
+        initial_portfolio = args.initial_cash
+    else:
+        initial_portfolio = args.initial_portfolio
+    tickers = df.columns.to_list()
+    # Initial portfolio is a dictionary with keys = tickers and values = number of shares owned
+    # - And Bank_account is the key for the cash in bank
+    initial_portfolio = init_portfolio(initial_portfolio, tickers)
      
-    # instanciating the trading environment   
+    # 2.2 Init the trading environment   
+    # - The environment is a wrapper around the data
+    #   - State-space: 
+    #       - cash, 
+    #       - n_stocks_shares_owned, 
+    #       - n_stocks_close_prices 
+    #       - optional(n_stocks_corr_matrix, n_stocks_eigenvalues))
+    #   - Action-space:
+    #      - n_stocks_shares_to_buy
+    #      - n_stocks_shares_to_sell
+    #   - Reward function:
+    #       - The reward is the return of the portfolio
+    #       - The return is the sum of the returns of the assets weighted by the number of shares owned
+    #       - The return of an asset is the difference between 
+    #           - the close price of the asset at the current time step 
+    #           - and the close price of the asset at the previous time step
+
     env = Environment(stock_market_history=df,
                       initial_portfolio=initial_portfolio,
                       buy_cost=args.buy_cost,
@@ -77,18 +109,22 @@ def main(args):
                       window=args.window,
                       number_of_eigenvalues=args.number_of_eigenvalues)
     
-    # instanciating the data standard scaler
-    scaler = instanciate_scaler(env=env, 
+    # 2.3 Init the data standard scaler
+    scaler = init_scaler(env=env, 
                                 mode=args.mode,
                                 checkpoint_directory=checkpoint_directory)
     
-    # instanciating the trading agent
-    agent = instanciate_agent(env=env, 
+    # 2.4 Init the trading agent
+    agent = init_agent(env=env, 
                               device=device, 
                               checkpoint_directory=checkpoint_directory,
                               args=args)
     
-    # running the whole training or testing process   
+
+    # 3. Run the training or testing process
+    # ########################################################################################
+    
+    # 3.1 Running the whole training or testing process   
     run = Run(env=env,
               agent=agent,
               n_episodes=args.n_episodes,
@@ -98,20 +134,20 @@ def main(args):
               sac_temperature=args.sac_temperature,
               scaler=scaler)
     
-    # running the training or testing, saving plots
+    # 3.2 Saving plots
     initial_time = time.time()
     run.run()
     if args.plot:
         run.logger.generate_plots()
     final_time = time.time()
-    print('\nTotal {}ing duration: {:*^13.3f}\n'.format(args.mode, final_time-initial_time))
+    print('\nTotal {} duration: {:*^13.3f}\n'.format(args.mode, final_time-initial_time))
 
 
 if __name__ == '__main__':
     
     parser = ArgumentParser()
 
-    # parameters defining the trading environment
+    # I. Trading environment parameters
     group1 = parser.add_mutually_exclusive_group()
     group1.add_argument('--initial_cash',      type=float, default=None,         help='Initial cash in the bank, assuming no shares are owned')
     group1.add_argument('--initial_portfolio', type=str,   default='./portfolios_and_tickers/initial_portfolio.json', help='Path to json file containing the content of an initial portfolio, including the cash in bank')
@@ -124,11 +160,11 @@ if __name__ == '__main__':
     parser.add_argument('--final_date',        type=str,   default='2020-12-30', help="Final date of the multidimensional time series of the assets price: str, smaller or equal to '2020-12-30'")
     parser.add_argument('--limit_n_stocks',    type=int,   default=20,           help='Maximal number of shares that can be bought or sell in one trade')
     
-    # type of agent
+    # 2. Agent parameters
     parser.add_argument('--agent_type',      type=str,   default='distributional', help="Type of agent: 'manual_temperature' or 'automatic_temperature' or 'distributional'")
     parser.add_argument('--sac_temperature', type=float, default=2.0,              help="Coefficient of the entropy term in the loss function in case 'manual_temperature' agent is used")
     
-    # hyperparameters for the training process
+    # 3. Training process parameters
     parser.add_argument('--gamma',       type=float, default=0.99,    help='Discount factor in the definition of the return')
     parser.add_argument('--lr_Q',        type=float, default=0.0003,  help='Learning rate for the critic networks')
     parser.add_argument('--lr_pi',       type=float, default=0.0003,  help='Learning rate for the actor networks')
@@ -139,21 +175,21 @@ if __name__ == '__main__':
     parser.add_argument('--grad_clip',   type=float, default=1.0,     help='Bound in case one decides to use gradient clipping in the training process')
     parser.add_argument('--delay',       type=int,   default=1,       help='Delay between training of critic and actor')
     
-    # hyperparameters for the architectures
+    # 3.2. Model-architecture hyper-parameters
     parser.add_argument('--layer_size', type=int, default=256, help='Number of neurons in the various hidden layers')
     
-    # Number of training or testing episodes and mode
+    # 3.3. Number of training or testing episodes and mode
     parser.add_argument('--n_episodes',   type=int, required=True, help='Number of training or testing episodes')
     parser.add_argument('--mode',         type=str, required=True, help="Mode used: 'train' or 'test'")
     parser.add_argument('--experimental', action='store_true',     help='Saves all outputs in an overwritten directory, used simple experiments and tuning')
     
-    # random seed, logs information and hardware
+    # 3.4. random seed, logs information and hardware
     parser.add_argument('--checkpoint_directory', type=str,            default=None,         help='In test mode, specify the directory in which to find the weights of the trained networks')
     parser.add_argument('--plot',                 action='store_true', default=False,        help='Whether to automatically generate plots or not')
     parser.add_argument('--seed',                 type=int,            default='42',         help='Random seed for reproducibility')
     parser.add_argument('--gpu_devices',          type=int, nargs='+', default=[0, 1, 2, 3], help='Specify the GPUs if any')
     
-    # parameters concerning data preprocessing
+    # II. Data preprocessing parameters
     group2 = parser.add_mutually_exclusive_group()
     group2.add_argument('--use_corr_matrix',       action='store_true', default=False, help='To append the sliding correlation matrix to the time series')
     group2.add_argument('--use_corr_eigenvalues',  action='store_true', default=False, help='To append the eigenvalues of the correlation matrix to the time series')

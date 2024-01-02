@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import List
 import yfinance as yf
 
+
 class DataFetcher():
     
     def __init__(self,
@@ -32,6 +33,7 @@ class DataFetcher():
         self.end_date = end_date
         self.directory_path = directory_path
         
+
     def fetch_and_merge_data(self) -> None:
         
         final_df = None
@@ -39,16 +41,21 @@ class DataFetcher():
         for stock in self.stock_symbols:
             
             file_path = os.path.join(self.directory_path, "{}.csv".format(stock))
+
             if not os.path.exists(file_path):
                 data = yf.download(stock, start=self.start_date, end=self.end_date)
                 if data.size > 0:
                     data.to_csv(file_path)
                     file = open(file_path).readlines()
+
+                    # Clean small data files
                     if len(file) < 10:
                         os.system("rm " + file_path)
             
             if os.path.exists(file_path):
+                # handle file not exist - due to no data or missing data
                 df = pd.read_csv(file_path)
+                
                 stock_name = file_path.split('/')[1].split('.')[0]
                 df['Name'] = stock_name
 
@@ -58,10 +65,14 @@ class DataFetcher():
                     final_df = final_df.append(df, ignore_index=True)
                 
                 os.system("rm " + file_path)
+                # @TODO: clean cached stock_file_path after reading 
+                # ->> Not need to do it ->> keep the data file for future use
+                # Not need to re-download the data file again
                 
         path = os.path.join(self.directory_path, 'stocks.csv')
         final_df.to_csv(path, index=False)
     
+
 class Preprocessor():
     
     def __init__(self,
@@ -73,6 +84,7 @@ class Preprocessor():
         path = os.path.join(df_directory, file_name)
         self.df = pd.read_csv(path) 
         
+
     def collect_close_prices(self) -> pd.DataFrame:
         
         self.df['Date'] = pd.to_datetime(self.df['Date'])
@@ -87,6 +99,7 @@ class Preprocessor():
         self.df = close_prices
         return close_prices
         
+
     def handle_missing_values(self) -> pd.DataFrame:
         
         self.df.dropna(axis=0, how='all', inplace=True)
@@ -109,39 +122,39 @@ def load_data(initial_date: str,
         final_date (str): final date of the time series
         tickers_subset (str): subset of tickers for assets of interest
         mode (str): in order to load either the train or test data
+        path (str): path to the text file containing the tickers of the assets of interest
     
     Returns:
         df (pd.DataFrame): multidimensional time series containing the close price of the relevant assets
     """
     
+    # 1. Get stock list
     with open(path) as f:
         stocks_symbols = f.read().splitlines()
       
+    # 2. Check if the stocks is already downloaded
     if not os.path.exists('data/'):  
-        
         print('\n>>>>> Fetching the data <<<<<')
-        
         fetcher = DataFetcher(stock_symbols=stocks_symbols,
                               start_date=initial_date,
                               end_date=final_date,
                               directory_path="data")
-        
         fetcher.fetch_and_merge_data()
     
+
+    # 3. Check if the close prices are already extracted
     if not os.path.exists('data/close.csv'):
-        
         print('>>>>> Extracting close prices <<<<<')
-        
         preprocessor = Preprocessor(df_directory='data',
                                     file_name='stocks.csv')
     
         df = preprocessor.collect_close_prices()
         df = preprocessor.handle_missing_values()
     
+
+    # 4. Select tickers close prices
     else:
-        
         print('\n>>>>> Reading the data <<<<<')
-        
         df = pd.read_csv('data/close.csv', index_col=0)
         
         # We select the tickers we want to focus on, reading them form a list of tickers text file.
@@ -149,6 +162,7 @@ def load_data(initial_date: str,
             stocks_subset = f.read().splitlines()
             stocks_subset = [ticker for ticker in stocks_subset if ticker in df.columns]
             
+        # Dataframe: index = dates, columns = tickers, values = close prices
         df = df[stocks_subset]
     
     time_horizon = df.shape[0]

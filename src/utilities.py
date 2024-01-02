@@ -96,13 +96,20 @@ def plot_portfolio_value(x: List[int],
     plt.title('Portfolio value')
     plt.savefig(figure_file) 
         
-def instanciate_scaler(env: gym.Env,
+
+
+def init_scaler(env: gym.Env,
                        mode: str,
                        checkpoint_directory: str) -> StandardScaler:
     """Instanciate and either fit or load parameter depending on mode.
     
     In train mode, the agent behaves randomly in order to store typical observations in the environment.
     The random agent trades for 10 episodes to have a more accurate scaler.
+
+    ->> Scaler is apply to scale the observation space of the environment.
+        - Scaler is z-norm 
+        - Scaler normalize the observation space to have mean 0 and std 1
+        - Observation space is the state of the environment - used as input to train the agent-model
     
     Args:
         env (gym.Env): trading environment
@@ -136,7 +143,9 @@ def instanciate_scaler(env: gym.Env,
     
     return scaler
 
-def prepare_initial_portfolio(initial_portfolio: Union[int, float, str],
+
+
+def init_portfolio(initial_portfolio: Union[int, float, str],
                               tickers: List[str]) -> dict:
     """Prepare the initial portfolio to give to the environment constructor.
     
@@ -151,11 +160,18 @@ def prepare_initial_portfolio(initial_portfolio: Union[int, float, str],
     
     print('>>>>> Reading the provided initial portfolio <<<<<')
     
+    
     if isinstance(initial_portfolio, int) or isinstance(initial_portfolio, float):
+        # 1. Basically init the portfolio with 0 shares of each asset and the provided cash in bank
         initial_portfolio_returned = {key: 0 for key in tickers}
         initial_portfolio_returned["Bank_account"] = initial_portfolio
     
     else:
+        # 2. If a json file is provided, read it and update the portfolio accordingly
+        # - if the asset is not in the json file, then it is assumed that the agent owns 0 shares of it
+        # - if the asset is in the json file, then it is assumed that the agent owns the number of shares prescribed in the json file
+        # - Bank_account is always read from the json file
+
         with open(initial_portfolio, "r") as file:
             initial_portfolio = json.load(file)
             
@@ -167,6 +183,8 @@ def prepare_initial_portfolio(initial_portfolio: Union[int, float, str],
                 initial_portfolio_returned[key] = initial_portfolio[key]
             
     return initial_portfolio_returned
+
+
 
 def append_corr_matrix(df: pd.DataFrame,
                        window: int,
@@ -200,6 +218,8 @@ def append_corr_matrix(df: pd.DataFrame,
         corr_flattened = pd.concat([corr_flattened, temp])
 
     return pd.concat([df, corr_flattened], axis=1).iloc[window-1 : ]
+
+
 
 def append_corr_matrix_eigenvalues(df: pd.DataFrame,
                                    window: int,
@@ -238,3 +258,5 @@ def append_corr_matrix_eigenvalues(df: pd.DataFrame,
     print('>>>>> Eigenvalues have been appended <<<<<')
 
     return pd.concat([df.iloc[window-1 : ], corr_eigenvalues], axis=1)
+
+

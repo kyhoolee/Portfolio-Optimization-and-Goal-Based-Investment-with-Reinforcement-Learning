@@ -16,6 +16,8 @@ import pandas as pd
 from typing import Tuple
 
 from src.utilities import append_corr_matrix, append_corr_matrix_eigenvalues
+
+
 class Environment(gym.Env):
     """Environment for stock trading.
     
@@ -23,7 +25,7 @@ class Environment(gym.Env):
     
     Attributes:
         observation_space (gym.spaces.Box): (bank account balance, stocks price, corr matrix, owned shares)
-        action_space (gym.spaces.Box): cube [-1,1]^n_stocks. positive value: buy, negative value: sale
+        action_space (gym.spaces.Box): cube [-1,1]^n_stocks. positive value: buy, negative value: sell
     """
 
     def __init__(self, 
@@ -48,6 +50,8 @@ class Environment(gym.Env):
             sell_cost (float): fees in percentage for selling a stock 
             bank_rate (float): annual interest rate of the bank account
             limit_n_stocks (float): maximum number of stocks one can buy or sell at once
+                - (actions * limit_n_stocks) = number_stocks to trade (buy/sell)
+                - (actions) is normalized between -1 and 1
             buy_rule (str): specifies the order in which one buys the stocks the agent decided to buy
             use_corr_matrix (bool): whether or not to append the correlation matrix to the time series
             window (int): in case the correlation matrix is used, size of the sliding window
@@ -58,36 +62,37 @@ class Environment(gym.Env):
         
         super(Environment, self).__init__()
         
-        # attributes related to the financial time series
+        # 1. Attributes related to the financial time series
         self.stock_market_history = stock_market_history
         self.assets_list = self.stock_market_history.columns
         self.stock_space_dimension = stock_market_history.shape[1]
         
-        # if asked, append the sliding correlation matrix of the time series
+        # 2. Correlation matrix related attributes
+        # 2.1. if asked, append the sliding correlation matrix of the time series
         if use_corr_matrix:
             self.stock_market_history = append_corr_matrix(df=self.stock_market_history,
                                                            window=window)
             
-        # if asked, append the eigenvalues of the sliding correlation matrix of the time series
+        # 2.2. if asked, append the eigenvalues of the sliding correlation matrix of the time series
         elif use_corr_eigenvalues:
             self.stock_market_history = append_corr_matrix_eigenvalues(df=self.stock_market_history,
                                                                        window=window,
                                                                        number_of_eigenvalues = number_of_eigenvalues)
         
-        # We define the time horizon after appending the correlation matrix or its eigenvalues because 
+        # 2.3. We define the time horizon after appending the correlation matrix or its eigenvalues because 
         # the definition of the sliding correlation matrix forces to get rid of a few time points
         self.time_horizon = self.stock_market_history.shape[0]
         
-        # defining the observation and action space, once all preprocessing has been done
+        # 3. defining the observation and action space, once all preprocessing has been done
         self.observation_space_dimension = 1 + self.stock_space_dimension + self.stock_market_history.shape[1]
         self.action_space_dimension = self.stock_space_dimension
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.observation_space_dimension,))
         self.action_space = gym.spaces.Box(low=-1, high=1, shape=(self.action_space_dimension,)) 
         
-        # maximal amount of share one can buy or sell in one trade
+        # 4. maximal amount of share one can buy or sell in one trade
         self.limit_n_stocks = limit_n_stocks
         
-        # attributes related to buying, selling, and bank interest rate
+        # 5. attributes related to buying, selling, and bank interest rate
         self.buy_rule = buy_rule
         self.buy_cost = buy_cost
         self.sell_cost = sell_cost
@@ -95,7 +100,7 @@ class Environment(gym.Env):
         
         self.initial_portfolio = initial_portfolio
         
-        # initializing the state of the environment
+        # 6. initializing the state of the environment
         self.current_step = None
         self.cash_in_bank = None
         self.stock_prices = None
@@ -103,8 +108,9 @@ class Environment(gym.Env):
         self.reset()
     
     def reset(self) -> np.array:  
-        """initialize the bank account balance and stock market status 
-        the initial time.
+        """
+        initialize the bank account balance 
+        and stock market status the initial time.
         
         Returns:
             np.array of the initial observation 

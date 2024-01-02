@@ -43,15 +43,32 @@ class Agent():
         
         Args:
             lr_Q (float): learning rate for critic nets
+                - Critic-Nets: network that approximates the Q-function
+                    - Take input (state, action) and output a scalar
+                    - Output is the Q-value of the input (state, action) pair
+                        - Which is the cumulative discounted reward of taking action a in state s
+
             lr_pi (float): learning rate for policy nets
+                - Policy-Nets: network that approximates the policy function
+                    - Take input state and output a distribution over actions
+                    - Output is the probability of taking action a in state s
+
             input_shape (Tuple): shape of the input data (state, or state and action)
+
             tau (float): linear interpolation parameter for the smooth copy to the target nets
+
             env (gym.Env): environment in which the agent evolves
+
             gamma (float): discout factor for the rewards
+
             size (int): maximal size of the replay buffer
+
             layer_size (int): number of neurons in the layers of the neural nets
+
             batch_size (int): size of the batches sampled from the replay buffer in the learning process
+
             delay (int): number of steps between each update of the policy, temperature and target nets
+            
             device (str): cpu or gpu
             
         Returns:
@@ -616,7 +633,7 @@ class Distributional_Agent(Agent):
             self._update_target_networks()
             
             
-def instanciate_agent(env: Environment, 
+def init_agent(env: Environment, 
                       device: str, 
                       checkpoint_directory: str,
                       args: tuple,
